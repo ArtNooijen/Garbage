@@ -5,4 +5,10 @@ __pycache__
 *.pyc
 data
 logs
+runs
+training
+local-training
+samples
+*.pt
+*.zip
 .DS_Store

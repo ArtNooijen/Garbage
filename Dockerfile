@@ -24,7 +24,7 @@ RUN if [ "$INSTALL_YOLO" = "true" ]; then \
         uv sync --frozen --no-dev; \
     fi
 
-VOLUME ["/app/data", "/app/samples"]
+VOLUME ["/app/data", "/app/models", "/app/samples"]
 
 ENTRYPOINT ["uv", "run", "--no-sync", "garbage-vision"]
 CMD ["prod"]

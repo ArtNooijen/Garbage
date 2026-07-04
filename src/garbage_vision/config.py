@@ -74,6 +74,7 @@ class AppConfig:
     object_confidence: float
     object_image_size: int
     object_classes: set[str]
+    notification_suppress_classes: set[str]
     notify_enabled: bool
     dry_run_notifications: bool
     notify_provider: str
@@ -116,6 +117,7 @@ def load_config() -> AppConfig:
             "OBJECT_CLASSES",
             "afval,vaat,bottle,cup,bowl,backpack,handbag,suitcase,book,cell phone",
         ),
+        notification_suppress_classes=_csv("NOTIFICATION_SUPPRESS_CLASSES", "person"),
         notify_enabled=_bool("NOTIFY_ENABLED", False),
         dry_run_notifications=_bool("DRY_RUN_NOTIFICATIONS", True),
         notify_provider=os.getenv("NOTIFY_PROVIDER", "webhook").strip().lower(),

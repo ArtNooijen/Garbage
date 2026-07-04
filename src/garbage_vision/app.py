@@ -253,6 +253,20 @@ def detection_counts(findings: list[ObjectFinding]) -> dict[str, int]:
     }
 
 
+def suppress_notification_reason(
+    findings: list[ObjectFinding],
+    suppress_classes: set[str],
+) -> str | None:
+    if not suppress_classes:
+        return None
+    detected = sorted(
+        {finding.name for finding in findings if finding.name in suppress_classes}
+    )
+    if not detected:
+        return None
+    return "suppressed because detected: " + ", ".join(detected)
+
+
 def build_detector(config: AppConfig) -> MotionBaselineDetector:
     if config.baseline_image.exists():
         baseline = cv2.imread(str(config.baseline_image))
@@ -309,7 +323,14 @@ def handle_frame(
             full_path = save_latest_detection(config.output_dir, "latest.jpg", crop)
             crop_path = save_latest_detection(config.output_dir, "latest_roi_marked.jpg", crop_frame)
             LOGGER.info("Saved images latest=%s marked=%s", full_path, crop_path)
-            notifier.send(result, crop_path, detection_counts(display_findings))
+            suppress_reason = suppress_notification_reason(
+                verification.findings,
+                config.notification_suppress_classes,
+            )
+            if suppress_reason:
+                LOGGER.info("Notification %s", suppress_reason)
+            else:
+                notifier.send(result, crop_path, detection_counts(display_findings))
         else:
             LOGGER.info("Change suppressed because object verification rejected it")
 

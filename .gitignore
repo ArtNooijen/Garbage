@@ -8,10 +8,8 @@ __pycache__/
 logs/
 data/
 runs/
+training/
+local-training/
 project-*.zip
 samples/images/*
 !samples/images/.gitkeep
-training/datasets/**/images/**/*.jpg
-training/datasets/**/images/**/*.jpeg
-training/datasets/**/images/**/*.png
-!training/datasets/**/images/**/.gitkeep

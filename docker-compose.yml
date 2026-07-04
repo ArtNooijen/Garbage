@@ -3,13 +3,14 @@ services:
     build:
       context: .
       args:
-        INSTALL_YOLO: "false"
+        INSTALL_YOLO: "true"
     container_name: garbage-vision
     env_file:
       - path: .env
         required: false
     volumes:
       - ./data:/app/data
+      - ./models:/app/models:ro
       - ./samples:/app/samples:ro
     restart: unless-stopped
     command: ["prod"]
@@ -18,7 +19,7 @@ services:
     build:
       context: .
       args:
-        INSTALL_YOLO: "false"
+        INSTALL_YOLO: "true"
     profiles:
       - test
     env_file:
@@ -26,6 +27,7 @@ services:
         required: false
     volumes:
       - ./data:/app/data
+      - ./models:/app/models:ro
       - ./samples:/app/samples:ro
     restart: "no"
     command: ["test", "--source", "images"]

@@ -124,7 +124,7 @@ The app can run YOLO only after the ROI change detector fires. This helps separa
 
 `OBJECT_MODEL` is the primary model. It decides whether the change is accepted as trash/dishes by matching `OBJECT_CLASSES`.
 
-`OBJECT_MODEL_2` is optional. Use it for a general COCO YOLO model such as `yolov8m.pt`; its boxes are used as context for overlap marking, but it does not accept a detection by itself.
+`OBJECT_MODEL_2` is optional. Use it for a general COCO YOLO model such as `models/yolov8m.pt`; its boxes are used as context for overlap marking, but it does not accept a detection by itself.
 
 Install the optional dependency:
 
@@ -137,14 +137,15 @@ Then enable it in `.env`:
 ```bash
 OBJECT_DETECTION_ENABLED=true
 OBJECT_VERIFY_REQUIRED=true
-OBJECT_MODEL=runs/desk-trash/desk-trash-v1/weights/best.pt
-OBJECT_MODEL_2=yolov8m.pt
+OBJECT_MODEL=models/desk-trash-v1.pt
+OBJECT_MODEL_2=models/yolov8m.pt
 OBJECT_CONFIDENCE=0.25
 OBJECT_IMAGE_SIZE=1280
 OBJECT_CLASSES=afval,vaat
+NOTIFICATION_SUPPRESS_CLASSES=person
 ```
 
-With `OBJECT_VERIFY_REQUIRED=false`, YOLO findings are logged and drawn on saved detection images, but ROI changes can still notify. With `OBJECT_VERIFY_REQUIRED=true`, only primary-model matches from `OBJECT_CLASSES` allow a notification. Standard COCO YOLO models do not have a literal `trash` class, so use the custom `afval`/`vaat` model as the primary model.
+With `OBJECT_VERIFY_REQUIRED=false`, YOLO findings are logged and drawn on saved detection images, but ROI changes can still notify. With `OBJECT_VERIFY_REQUIRED=true`, only primary-model matches from `OBJECT_CLASSES` allow a notification. If any class from `NOTIFICATION_SUPPRESS_CLASSES` is seen by either YOLO model, the image is saved but no notification is sent. Standard COCO YOLO models do not have a literal `trash` class, so use the custom `afval`/`vaat` model as the primary model.
 
 For Docker, set `INSTALL_YOLO: "true"` in `docker-compose.yml` before building.
 
@@ -159,16 +160,16 @@ data/detections/latest_roi_marked.jpg
 
 ## Custom Classes
 
-To detect your own classes like `afval` and `vaat`, train a custom YOLO model. The starter dataset config is:
+To detect your own classes like `afval` and `vaat`, train a custom YOLO model. Training and labeling files live in a separate sibling project next to this repo, for example `../Garbage-training`, so they do not get deployed to the Linux machine. The dataset config is:
 
 ```text
-training/datasets/desk-trash/desk-trash.yaml
+../Garbage-training/local-training/training/datasets/desk-trash/desk-trash.yaml
 ```
 
 Dataset layout:
 
 ```text
-training/datasets/desk-trash/
+../Garbage-training/local-training/training/datasets/desk-trash/
   images/unlabeled/
   images/train/
   images/val/
@@ -179,21 +180,21 @@ training/datasets/desk-trash/
 Collect ROI crop images for annotation:
 
 ```bash
-uv run python scripts/collect_training_crops.py
+uv run python ../Garbage-training/local-training/scripts/collect_training_crops.py
 ```
 
 Useful variants:
 
 ```bash
-uv run python scripts/collect_training_crops.py --interval 5
-uv run python scripts/collect_training_crops.py --max-images 20
-uv run python scripts/collect_training_crops.py --only-on-change
+uv run python ../Garbage-training/local-training/scripts/collect_training_crops.py --interval 5
+uv run python ../Garbage-training/local-training/scripts/collect_training_crops.py --max-images 20
+uv run python ../Garbage-training/local-training/scripts/collect_training_crops.py --only-on-change
 ```
 
 This saves cropped camera images to:
 
 ```text
-training/datasets/desk-trash/images/unlabeled/
+../Garbage-training/local-training/training/datasets/desk-trash/images/unlabeled/
 ```
 
 Import those images into Label Studio, draw boxes for `afval` and `vaat`, then export YOLO labels. After annotation, move roughly 80% of images and labels to `images/train` and `labels/train`, and 20% to `images/val` and `labels/val`.
@@ -216,14 +217,18 @@ Coordinates are normalized from `0` to `1`.
 Train from a pretrained model:
 
 ```bash
-uv run yolo detect train model=yolov8m.pt data=training/datasets/desk-trash/desk-trash.yaml imgsz=1280 epochs=100 batch=2 workers=0 project=/Users/artnooijen/Documents/Git/vision/Garbage/runs/desk-trash name=desk-trash-v1
+uv run yolo detect train model=../Garbage-training/yolov8m.pt data=../Garbage-training/local-training/training/datasets/desk-trash/desk-trash.yaml imgsz=1280 epochs=100 batch=2 workers=0 project=../Garbage-training/runs/desk-trash name=desk-trash-v1
 ```
 
-After training, point the app at the best weights:
+After training, copy the best weights into the runtime model folder and point the app there:
 
 ```bash
-OBJECT_MODEL=runs/desk-trash/desk-trash-v1/weights/best.pt
-OBJECT_MODEL_2=yolov8m.pt
+cp ../Garbage-training/runs/desk-trash/desk-trash-v1/weights/best.pt models/desk-trash-v1.pt
+```
+
+```bash
+OBJECT_MODEL=models/desk-trash-v1.pt
+OBJECT_MODEL_2=models/yolov8m.pt
 OBJECT_CLASSES=afval,vaat
 OBJECT_IMAGE_SIZE=1280
 OBJECT_CONFIDENCE=0.25
@@ -330,6 +335,18 @@ git clone https://github.com/YOUR_USER/YOUR_REPO.git
 cd YOUR_REPO
 cp .env.example .env
 nano .env
+```
+
+Copy your trained runtime model to the Linux machine outside Git, for example:
+
+```bash
+mkdir -p models
+scp /path/to/desk-trash-v1.pt YOUR_PROXMOX_HOST:/path/to/YOUR_REPO/models/desk-trash-v1.pt
+```
+
+The `models/` directory is mounted into Docker, but `.pt` files are ignored by Git.
+
+```bash
 docker compose up -d --build garbage-vision
 docker compose logs -f garbage-vision
 ```
@@ -357,11 +374,12 @@ MIN_CHANGED_AREA=4000
 DETECTION_ROI=0,760,1900,856
 OBJECT_DETECTION_ENABLED=false
 OBJECT_VERIFY_REQUIRED=false
-OBJECT_MODEL=runs/desk-trash/desk-trash-v1/weights/best.pt
-OBJECT_MODEL_2=yolov8m.pt
+OBJECT_MODEL=models/desk-trash-v1.pt
+OBJECT_MODEL_2=models/yolov8m.pt
 OBJECT_CONFIDENCE=0.35
 OBJECT_IMAGE_SIZE=1280
 OBJECT_CLASSES=afval,vaat
+NOTIFICATION_SUPPRESS_CLASSES=person
 NOTIFY_ENABLED=false
 DRY_RUN_NOTIFICATIONS=true
 WEBHOOK_URL=
