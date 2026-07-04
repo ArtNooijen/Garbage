@@ -122,6 +122,10 @@ This writes `data/previews/roi_preview.jpg` and `data/previews/roi_crop.jpg`.
 
 The app can run YOLO only after the ROI change detector fires. This helps separate “something changed on the desk” from “a trash-like object is present.”
 
+`OBJECT_MODEL` is the primary model. It decides whether the change is accepted as trash/dishes by matching `OBJECT_CLASSES`.
+
+`OBJECT_MODEL_2` is optional. Use it for a general COCO YOLO model such as `yolov8m.pt`; its boxes are used as context for overlap marking, but it does not accept a detection by itself.
+
 Install the optional dependency:
 
 ```bash
@@ -132,14 +136,15 @@ Then enable it in `.env`:
 
 ```bash
 OBJECT_DETECTION_ENABLED=true
-OBJECT_VERIFY_REQUIRED=false
-OBJECT_MODEL=yolov8n.pt
-OBJECT_CONFIDENCE=0.35
+OBJECT_VERIFY_REQUIRED=true
+OBJECT_MODEL=runs/desk-trash/desk-trash-v1/weights/best.pt
+OBJECT_MODEL_2=yolov8m.pt
+OBJECT_CONFIDENCE=0.25
 OBJECT_IMAGE_SIZE=1280
-OBJECT_CLASSES=afval,vaat,bottle,cup,bowl,backpack,handbag,suitcase,book,cell phone
+OBJECT_CLASSES=afval,vaat
 ```
 
-With `OBJECT_VERIFY_REQUIRED=false`, YOLO findings are logged and drawn on saved detection images, but ROI changes can still notify. Set `OBJECT_VERIFY_REQUIRED=true` only after the model/classes reliably recognize what you consider trash. Standard COCO YOLO models do not have a literal `trash` class, so a custom model may be needed later.
+With `OBJECT_VERIFY_REQUIRED=false`, YOLO findings are logged and drawn on saved detection images, but ROI changes can still notify. With `OBJECT_VERIFY_REQUIRED=true`, only primary-model matches from `OBJECT_CLASSES` allow a notification. Standard COCO YOLO models do not have a literal `trash` class, so use the custom `afval`/`vaat` model as the primary model.
 
 For Docker, set `INSTALL_YOLO: "true"` in `docker-compose.yml` before building.
 
@@ -164,11 +169,34 @@ Dataset layout:
 
 ```text
 training/datasets/desk-trash/
+  images/unlabeled/
   images/train/
   images/val/
   labels/train/
   labels/val/
 ```
+
+Collect ROI crop images for annotation:
+
+```bash
+uv run python scripts/collect_training_crops.py
+```
+
+Useful variants:
+
+```bash
+uv run python scripts/collect_training_crops.py --interval 5
+uv run python scripts/collect_training_crops.py --max-images 20
+uv run python scripts/collect_training_crops.py --only-on-change
+```
+
+This saves cropped camera images to:
+
+```text
+training/datasets/desk-trash/images/unlabeled/
+```
+
+Import those images into Label Studio, draw boxes for `afval` and `vaat`, then export YOLO labels. After annotation, move roughly 80% of images and labels to `images/train` and `labels/train`, and 20% to `images/val` and `labels/val`.
 
 Class IDs:
 
@@ -188,13 +216,14 @@ Coordinates are normalized from `0` to `1`.
 Train from a pretrained model:
 
 ```bash
-uv run yolo detect train model=yolov8m.pt data=training/datasets/desk-trash/desk-trash.yaml imgsz=1280 epochs=100
+uv run yolo detect train model=yolov8m.pt data=training/datasets/desk-trash/desk-trash.yaml imgsz=1280 epochs=100 batch=2 workers=0 project=/Users/artnooijen/Documents/Git/vision/Garbage/runs/desk-trash name=desk-trash-v1
 ```
 
 After training, point the app at the best weights:
 
 ```bash
-OBJECT_MODEL=runs/detect/train/weights/best.pt
+OBJECT_MODEL=runs/desk-trash/desk-trash-v1/weights/best.pt
+OBJECT_MODEL_2=yolov8m.pt
 OBJECT_CLASSES=afval,vaat
 OBJECT_IMAGE_SIZE=1280
 OBJECT_CONFIDENCE=0.25
@@ -237,6 +266,25 @@ APP_MODE=prod
 POLL_SECONDS=60
 DRY_RUN_NOTIFICATIONS=false
 NOTIFY_ENABLED=true
+NOTIFY_PROVIDER=ntfy
+NTFY_SERVER=https://ntfy.sh
+NTFY_TOPIC=your-private-topic-name
+```
+
+For ntfy, install the ntfy app on your phone and subscribe to the same private topic. ntfy supports simple HTTP publishing to a topic and image attachments using the `Filename` header.
+
+For Pushover instead, set:
+
+```bash
+NOTIFY_PROVIDER=pushover
+PUSHOVER_APP_TOKEN=your-app-token
+PUSHOVER_USER_KEY=your-user-key
+```
+
+For a generic JSON webhook instead, set:
+
+```bash
+NOTIFY_PROVIDER=webhook
 WEBHOOK_URL=https://example.com/your-webhook
 ```
 
@@ -309,10 +357,11 @@ MIN_CHANGED_AREA=4000
 DETECTION_ROI=0,760,1900,856
 OBJECT_DETECTION_ENABLED=false
 OBJECT_VERIFY_REQUIRED=false
-OBJECT_MODEL=yolov8n.pt
+OBJECT_MODEL=runs/desk-trash/desk-trash-v1/weights/best.pt
+OBJECT_MODEL_2=yolov8m.pt
 OBJECT_CONFIDENCE=0.35
 OBJECT_IMAGE_SIZE=1280
-OBJECT_CLASSES=afval,vaat,bottle,cup,bowl,backpack,handbag,suitcase,book,cell phone
+OBJECT_CLASSES=afval,vaat
 NOTIFY_ENABLED=false
 DRY_RUN_NOTIFICATIONS=true
 WEBHOOK_URL=
@@ -342,4 +391,4 @@ Movement elsewhere in the room triggers detections:
 Set `DETECTION_ROI=x,y,width,height` to only watch the trash area. For the current camera view, `0,760,1900,856` covers the PC desk on the left and the main workbench area.
 
 Notifications are not sent:
-Confirm `NOTIFY_ENABLED=true`, `DRY_RUN_NOTIFICATIONS=false`, and `WEBHOOK_URL` is set. Test mode always dry-runs notifications; use `prod` mode for real alerts.
+Confirm `NOTIFY_ENABLED=true` and `DRY_RUN_NOTIFICATIONS=false`. For ntfy, set `NOTIFY_PROVIDER=ntfy` and `NTFY_TOPIC`. For Pushover, set `NOTIFY_PROVIDER=pushover`, `PUSHOVER_APP_TOKEN`, and `PUSHOVER_USER_KEY`. Test mode always dry-runs notifications; use `prod` mode for real alerts.

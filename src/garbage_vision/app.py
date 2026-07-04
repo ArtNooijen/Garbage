@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+from collections import Counter
 import logging
 import time
 from pathlib import Path
@@ -231,8 +232,25 @@ def filter_allowed_findings(
     allowed_classes: set[str],
 ) -> list[ObjectFinding]:
     if not allowed_classes:
-        return findings
-    return [finding for finding in findings if finding.name in allowed_classes]
+        return [finding for finding in findings if finding.model == "primary"]
+    return [
+        finding
+        for finding in findings
+        if finding.model == "primary" and finding.name in allowed_classes
+    ]
+
+
+def format_detection_counts(findings: list[ObjectFinding]) -> str:
+    counts = Counter(finding.name for finding in findings)
+    return f"afval={counts.get('afval', 0)} vaat={counts.get('vaat', 0)}"
+
+
+def detection_counts(findings: list[ObjectFinding]) -> dict[str, int]:
+    counts = Counter(finding.name for finding in findings)
+    return {
+        "afval": counts.get("afval", 0),
+        "vaat": counts.get("vaat", 0),
+    }
 
 
 def build_detector(config: AppConfig) -> MotionBaselineDetector:
@@ -276,9 +294,13 @@ def handle_frame(
 
     if result.detected:
         verification = verifier.verify(frame)
-        LOGGER.info("Object verification accepted=%s reason=%s", verification.accepted, verification.reason)
+        display_findings = filter_allowed_findings(verification.findings, config.object_classes)
+        LOGGER.info(
+            "YOLO result accepted=%s %s",
+            verification.accepted,
+            format_detection_counts(display_findings),
+        )
         if verification.accepted:
-            display_findings = filter_allowed_findings(verification.findings, config.object_classes)
             x1, y1, _, _ = roi_bounds(frame, config.detection_roi)
             crop = crop_roi(frame, config.detection_roi)
             regions = find_roi_changes(frame, config.baseline_image, config.detection_roi)
@@ -286,9 +308,8 @@ def handle_frame(
             crop_frame = draw_findings_on_roi_crop(crop_frame, display_findings, (x1, y1))
             full_path = save_latest_detection(config.output_dir, "latest.jpg", crop)
             crop_path = save_latest_detection(config.output_dir, "latest_roi_marked.jpg", crop_frame)
-            LOGGER.info("Saved latest ROI crop: %s", full_path)
-            LOGGER.info("Saved marked ROI crop: %s", crop_path)
-            notifier.send(result, crop_path)
+            LOGGER.info("Saved images latest=%s marked=%s", full_path, crop_path)
+            notifier.send(result, crop_path, detection_counts(display_findings))
         else:
             LOGGER.info("Change suppressed because object verification rejected it")
 

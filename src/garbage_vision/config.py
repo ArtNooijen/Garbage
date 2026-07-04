@@ -70,12 +70,19 @@ class AppConfig:
     object_detection_enabled: bool
     object_verify_required: bool
     object_model: str
+    object_model_2: str
     object_confidence: float
     object_image_size: int
     object_classes: set[str]
     notify_enabled: bool
     dry_run_notifications: bool
+    notify_provider: str
     webhook_url: str
+    ntfy_server: str
+    ntfy_topic: str
+    ntfy_token: str
+    pushover_app_token: str
+    pushover_user_key: str
 
 
 def load_config() -> AppConfig:
@@ -102,6 +109,7 @@ def load_config() -> AppConfig:
         object_detection_enabled=_bool("OBJECT_DETECTION_ENABLED", False),
         object_verify_required=_bool("OBJECT_VERIFY_REQUIRED", False),
         object_model=os.getenv("OBJECT_MODEL", "yolov8n.pt").strip(),
+        object_model_2=os.getenv("OBJECT_MODEL_2", "").strip(),
         object_confidence=_float("OBJECT_CONFIDENCE", 0.35),
         object_image_size=_int("OBJECT_IMAGE_SIZE", 1280),
         object_classes=_csv(
@@ -110,5 +118,11 @@ def load_config() -> AppConfig:
         ),
         notify_enabled=_bool("NOTIFY_ENABLED", False),
         dry_run_notifications=_bool("DRY_RUN_NOTIFICATIONS", True),
+        notify_provider=os.getenv("NOTIFY_PROVIDER", "webhook").strip().lower(),
         webhook_url=os.getenv("WEBHOOK_URL", "").strip(),
+        ntfy_server=os.getenv("NTFY_SERVER", "https://ntfy.sh").strip().rstrip("/"),
+        ntfy_topic=os.getenv("NTFY_TOPIC", "").strip(),
+        ntfy_token=os.getenv("NTFY_TOKEN", "").strip(),
+        pushover_app_token=os.getenv("PUSHOVER_APP_TOKEN", "").strip(),
+        pushover_user_key=os.getenv("PUSHOVER_USER_KEY", "").strip(),
     )

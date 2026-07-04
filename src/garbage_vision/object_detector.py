@@ -16,6 +16,7 @@ class ObjectFinding:
     name: str
     confidence: float
     box: tuple[int, int, int, int]
+    model: str
 
 
 @dataclass(frozen=True)
@@ -46,15 +47,16 @@ class YoloObjectVerifier:
         self.enabled = config.object_detection_enabled
         self.require_match = config.object_verify_required
         self.model_name = config.object_model
+        self.context_model_name = config.object_model_2
         self.confidence = config.object_confidence
         self.image_size = config.object_image_size
         self.allowed_classes = config.object_classes
         self.roi = config.detection_roi
-        self._model = None
+        self._models = {}
 
-    def _load_model(self):
-        if self._model is not None:
-            return self._model
+    def _load_model(self, model_name: str):
+        if model_name in self._models:
+            return self._models[model_name]
 
         try:
             from ultralytics import YOLO
@@ -64,17 +66,22 @@ class YoloObjectVerifier:
                 "Run: uv sync --extra yolo"
             ) from exc
 
-        self._model = YOLO(self.model_name)
-        return self._model
+        self._models[model_name] = YOLO(model_name)
+        return self._models[model_name]
 
-    def verify(self, frame: np.ndarray) -> ObjectVerification:
-        if not self.enabled:
-            return ObjectVerification(True, [], "object detection disabled")
-
-        roi_frame, (offset_x, offset_y) = crop_roi(frame, self.roi)
-        model = self._load_model()
-        LOGGER.info(
-            "Running YOLO on ROI crop only: width=%s height=%s imgsz=%s",
+    def _predict(
+        self,
+        model_name: str,
+        model_role: str,
+        roi_frame: np.ndarray,
+        offset_x: int,
+        offset_y: int,
+    ) -> list[ObjectFinding]:
+        model = self._load_model(model_name)
+        LOGGER.debug(
+            "Running %s YOLO model on ROI crop only: model=%s width=%s height=%s imgsz=%s",
+            model_role,
+            model_name,
             roi_frame.shape[1],
             roi_frame.shape[0],
             self.image_size,
@@ -97,21 +104,52 @@ class YoloObjectVerifier:
                 name = str(names.get(class_id, class_id)).lower()
                 confidence = float(box.conf[0])
                 x1, y1, x2, y2 = (int(value) for value in box.xyxy[0].tolist())
-                finding = ObjectFinding(
-                    name=name,
-                    confidence=confidence,
-                    box=(x1 + offset_x, y1 + offset_y, x2 + offset_x, y2 + offset_y),
+                findings.append(
+                    ObjectFinding(
+                        name=name,
+                        confidence=confidence,
+                        box=(x1 + offset_x, y1 + offset_y, x2 + offset_x, y2 + offset_y),
+                        model=model_role,
+                    )
                 )
-                findings.append(finding)
+        return findings
+
+    def verify(self, frame: np.ndarray) -> ObjectVerification:
+        if not self.enabled:
+            return ObjectVerification(True, [], "object detection disabled")
+
+        roi_frame, (offset_x, offset_y) = crop_roi(frame, self.roi)
+        primary_findings = self._predict(
+            self.model_name,
+            "primary",
+            roi_frame,
+            offset_x,
+            offset_y,
+        )
+        context_findings: list[ObjectFinding] = []
+        if self.context_model_name:
+            context_findings = self._predict(
+                self.context_model_name,
+                "context",
+                roi_frame,
+                offset_x,
+                offset_y,
+            )
+        findings = primary_findings + context_findings
 
         if not self.allowed_classes:
-            accepted = bool(findings)
+            accepted = bool(primary_findings)
         else:
-            accepted = any(finding.name in self.allowed_classes for finding in findings)
+            accepted = any(finding.name in self.allowed_classes for finding in primary_findings)
 
         if accepted:
-            labels = ", ".join(f"{item.name}:{item.confidence:.2f}" for item in findings)
-            return ObjectVerification(True, findings, f"YOLO accepted: {labels}")
+            labels = ", ".join(
+                f"{item.name}:{item.confidence:.2f}" for item in primary_findings
+            )
+            if context_findings:
+                labels = f"{labels}; context={len(context_findings)} objects"
+            LOGGER.debug("YOLO accepted: %s", labels)
+            return ObjectVerification(True, findings, "YOLO accepted")
 
         if self.require_match:
             return ObjectVerification(False, findings, "YOLO found no allowed trash-like object")

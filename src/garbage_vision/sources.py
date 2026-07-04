@@ -140,6 +140,26 @@ def _reolink_login(config: AppConfig) -> str:
     return str(value["Token"].get("name", ""))
 
 
+def _reolink_logout(config: AppConfig, token: str) -> None:
+    if not token:
+        return
+
+    logout_url = _with_query_values(
+        _reolink_api_url(config.camera_snapshot_url),
+        {"cmd": "Logout", "token": token},
+    )
+    try:
+        response = requests.post(
+            logout_url,
+            json=[{"cmd": "Logout"}],
+            timeout=10,
+            verify=config.camera_verify_tls,
+        )
+        response.raise_for_status()
+    except requests.RequestException:
+        LOGGER.warning("Reolink logout failed for %s", _redact_url(logout_url))
+
+
 def read_snapshot(config: AppConfig) -> np.ndarray:
     url = config.camera_snapshot_url
     if not url:
@@ -148,12 +168,11 @@ def read_snapshot(config: AppConfig) -> np.ndarray:
     if not config.camera_verify_tls:
         urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-    token = _reolink_login(config)
-    if not token:
-        raise RuntimeError("Reolink login returned an empty token")
-    url = _with_query_values(config.camera_snapshot_url, {"token": token})
-
     try:
+        token = _reolink_login(config)
+        if not token:
+            raise RuntimeError("Reolink login returned an empty token")
+        url = _with_query_values(config.camera_snapshot_url, {"token": token})
         response = requests.get(url, timeout=15, verify=config.camera_verify_tls)
         response.raise_for_status()
     except requests.HTTPError as exc:
@@ -166,6 +185,9 @@ def read_snapshot(config: AppConfig) -> np.ndarray:
     except requests.RequestException as exc:
         redacted_url = _redact_url(url)
         raise RuntimeError(f"Snapshot request failed for {redacted_url}: {exc.__class__.__name__}") from None
+    finally:
+        if "token" in locals():
+            _reolink_logout(config, token)
 
     image_bytes = np.frombuffer(response.content, dtype=np.uint8)
     frame = cv2.imdecode(image_bytes, cv2.IMREAD_COLOR)
