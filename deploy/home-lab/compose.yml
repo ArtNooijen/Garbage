@@ -1,0 +1,16 @@
+services:
+  garbage-vision:
+    build:
+      context: /home/art/garbage-vision
+      args:
+        INSTALL_YOLO: "true"
+    container_name: garbage-vision
+    env_file:
+      - path: /home/art/garbage-vision/.env
+        required: false
+    volumes:
+      - /home/art/garbage-vision/data:/app/data
+      - /home/art/garbage-vision/models:/app/models:ro
+      - /home/art/garbage-vision/samples:/app/samples:ro
+    restart: unless-stopped
+    command: ["prod"]

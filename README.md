@@ -308,9 +308,14 @@ docker compose logs -f garbage-vision
 
 Detection images are saved under `data/detections/`.
 
-## Recommended Mac to Proxmox Workflow
+## Deploy to the Home-Lab Linux VM
 
-1. Build and test on macOS:
+The target host from `ArtNooijen/home-lab` is the Ubuntu `linux-docker-host`
+VM on Proxmox. This app is best deployed as its own source checkout on that VM,
+next to the `home-lab` checkout, because the container image is built from this
+repo and the private `.env`, `data/`, and `models/` files should stay out of Git.
+
+1. Build and test on macOS before shipping:
 
 ```bash
 uv sync
@@ -320,7 +325,7 @@ docker compose build
 docker compose --profile test run --rm garbage-vision-test
 ```
 
-2. Commit and push to GitHub:
+2. Commit and push this repo:
 
 ```bash
 git add .
@@ -328,30 +333,155 @@ git commit -m "Add garbage vision service"
 git push
 ```
 
-3. On the Proxmox Linux container or Docker host:
+3. SSH into the Linux Docker host:
 
 ```bash
-git clone https://github.com/YOUR_USER/YOUR_REPO.git
-cd YOUR_REPO
+ssh art@hadrian
+cd /home/art
+```
+
+4. Clone or update the app checkout:
+
+```bash
+git clone https://github.com/ArtNooijen/Garbage.git garbage-vision
+cd garbage-vision
+```
+
+For later updates:
+
+```bash
+cd /home/art/garbage-vision
+git pull
+```
+
+5. Create the VM-local config:
+
+```bash
 cp .env.example .env
 nano .env
 ```
 
-Copy your trained runtime model to the Linux machine outside Git, for example:
+Recommended production values:
 
 ```bash
-mkdir -p models
-scp /path/to/desk-trash-v1.pt YOUR_PROXMOX_HOST:/path/to/YOUR_REPO/models/desk-trash-v1.pt
+APP_MODE=prod
+CAMERA_SOURCE=snapshot
+CAMERA_SNAPSHOT_URL=https://192.168.2.44/cgi-bin/api.cgi?cmd=Snap&channel=0&rs=garbagevision
+CAMERA_USERNAME=admin
+CAMERA_PASSWORD=your-camera-password
+CAMERA_VERIFY_TLS=false
+POLL_SECONDS=60
+BASELINE_IMAGE=data/baseline/clean.jpg
+DETECTION_THRESHOLD=0.02
+MIN_CHANGED_AREA=4000
+DETECTION_ROI=0,760,1900,856
+OBJECT_DETECTION_ENABLED=true
+OBJECT_VERIFY_REQUIRED=false
+OBJECT_MODEL=models/desk-trash-v1.pt
+OBJECT_MODEL_2=models/yolov8m.pt
+OBJECT_CLASSES=afval,vaat
+NOTIFICATION_SUPPRESS_CLASSES=person
+NOTIFY_ENABLED=true
+DRY_RUN_NOTIFICATIONS=false
+NOTIFY_PROVIDER=ntfy
+NTFY_SERVER=https://ntfy.sh
+NTFY_TOPIC=your-private-topic-name
 ```
 
-The `models/` directory is mounted into Docker, but `.pt` files are ignored by Git.
+6. Copy runtime model weights to the VM outside Git:
 
 ```bash
-docker compose up -d --build garbage-vision
+ssh art@hadrian 'mkdir -p /home/art/garbage-vision/models'
+scp models/desk-trash-v1.pt art@hadrian:/home/art/garbage-vision/models/desk-trash-v1.pt
+scp models/yolov8m.pt art@hadrian:/home/art/garbage-vision/models/yolov8m.pt
+```
+
+The `models/` directory is mounted into Docker, but `.pt` files are ignored by
+Git.
+
+7. Build the container and run a camera sanity check on the VM:
+
+```bash
+cd /home/art/garbage-vision
+docker compose build garbage-vision
+docker compose --profile test run --rm garbage-vision-test test --source camera
+```
+
+8. Capture a clean baseline on the VM after the camera view is clear:
+
+```bash
+docker compose run --rm garbage-vision --capture-baseline
+docker compose run --rm garbage-vision --preview-roi
+```
+
+Check the generated preview files:
+
+```text
+data/baseline/clean.jpg
+data/previews/roi_preview.jpg
+data/previews/roi_crop.jpg
+```
+
+Then keep production running:
+
+```bash
+docker compose up -d garbage-vision
 docker compose logs -f garbage-vision
 ```
 
-No macOS-specific runtime dependencies are used in production. The container uses Linux, Python 3.12, OpenCV headless, and `uv`.
+No macOS-specific runtime dependencies are used in production. The container
+uses Linux, Python 3.12, OpenCV headless, and `uv`.
+
+### Optional Home-Lab Repo Entry
+
+The `home-lab` repo tracks service compose files and its README, not private
+runtime data. Add a lightweight note there rather than copying `.env`, model
+weights, or detection images into that repo.
+
+Add this to the `linux-docker-host` container table:
+
+```text
+| garbage-vision | local build from /home/art/garbage-vision | no published ports |
+```
+
+If you want a service folder in `home-lab`, create
+`home-lab/garbage-vision/compose.yml` with a pointer to the app checkout:
+
+```yaml
+services:
+  garbage-vision:
+    build:
+      context: /home/art/garbage-vision
+      args:
+        INSTALL_YOLO: "true"
+    container_name: garbage-vision
+    env_file:
+      - path: /home/art/garbage-vision/.env
+        required: false
+    volumes:
+      - /home/art/garbage-vision/data:/app/data
+      - /home/art/garbage-vision/models:/app/models:ro
+      - /home/art/garbage-vision/samples:/app/samples:ro
+    restart: unless-stopped
+    command: ["prod"]
+```
+
+Run that variant from the home-lab checkout with:
+
+```bash
+cd /home/art/home-lab/garbage-vision
+docker compose up -d --build
+```
+
+Because `home-lab/.gitignore` allow-lists service folders, also add:
+
+```gitignore
+!/garbage-vision/
+!/garbage-vision/**/
+```
+
+The root `docker-compose.yml` in this repo remains the primary deployment file.
+The home-lab compose pointer is only for keeping service inventory in one place.
 
 ## Configuration
 
