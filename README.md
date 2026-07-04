@@ -142,10 +142,14 @@ OBJECT_MODEL_2=models/yolov8m.pt
 OBJECT_CONFIDENCE=0.25
 OBJECT_IMAGE_SIZE=1280
 OBJECT_CLASSES=afval,vaat
+TRASH_CLASSES=afval,bottle
+DISH_CLASSES=vaat,plate,plates,bowl,dish,dishes
+DISH_CUP_CLASSES=cup,mug,wine glass
+DISH_CUP_THRESHOLD=2
 NOTIFICATION_SUPPRESS_CLASSES=person
 ```
 
-With `OBJECT_VERIFY_REQUIRED=false`, YOLO findings are logged and drawn on saved detection images, but ROI changes can still notify. With `OBJECT_VERIFY_REQUIRED=true`, only primary-model matches from `OBJECT_CLASSES` allow a notification. If any class from `NOTIFICATION_SUPPRESS_CLASSES` is seen by either YOLO model, the image is saved but no notification is sent. Standard COCO YOLO models do not have a literal `trash` class, so use the custom `afval`/`vaat` model as the primary model.
+With `OBJECT_VERIFY_REQUIRED=false`, YOLO findings are logged and drawn on saved detection images, but ROI changes can still notify. With `OBJECT_VERIFY_REQUIRED=true`, primary-model matches from `OBJECT_CLASSES` allow a notification. Trash evidence from either model also allows a notification: any class from `TRASH_CLASSES` counts as `afval`, so a COCO `bottle` finding is shown on `latest_roi_marked.jpg`. Dish evidence from either model also allows a notification: any class from `DISH_CLASSES`, or at least `DISH_CUP_THRESHOLD` findings from `DISH_CUP_CLASSES`, counts as `vaat`. Standard COCO YOLO models do not have a literal `trash` or `plate` class, but they can usually detect `bottle`, `cup`, `bowl`, and `wine glass`; keep the custom `afval`/`vaat` model as the primary model. If any class from `NOTIFICATION_SUPPRESS_CLASSES` is seen by either YOLO model, the image is saved but no notification is sent.
 
 For Docker, set `INSTALL_YOLO: "true"` in `docker-compose.yml` before building.
 
@@ -230,6 +234,10 @@ cp ../Garbage-training/runs/desk-trash/desk-trash-v1/weights/best.pt models/desk
 OBJECT_MODEL=models/desk-trash-v1.pt
 OBJECT_MODEL_2=models/yolov8m.pt
 OBJECT_CLASSES=afval,vaat
+TRASH_CLASSES=afval,bottle
+DISH_CLASSES=vaat,plate,plates,bowl,dish,dishes
+DISH_CUP_CLASSES=cup,mug,wine glass
+DISH_CUP_THRESHOLD=2
 OBJECT_IMAGE_SIZE=1280
 OBJECT_CONFIDENCE=0.25
 ```
@@ -380,6 +388,10 @@ OBJECT_VERIFY_REQUIRED=false
 OBJECT_MODEL=models/desk-trash-v1.pt
 OBJECT_MODEL_2=models/yolov8m.pt
 OBJECT_CLASSES=afval,vaat
+TRASH_CLASSES=afval,bottle
+DISH_CLASSES=vaat,plate,plates,bowl,dish,dishes
+DISH_CUP_CLASSES=cup,mug,wine glass
+DISH_CUP_THRESHOLD=2
 NOTIFICATION_SUPPRESS_CLASSES=person
 NOTIFY_ENABLED=true
 DRY_RUN_NOTIFICATIONS=false
@@ -509,6 +521,10 @@ OBJECT_MODEL_2=models/yolov8m.pt
 OBJECT_CONFIDENCE=0.35
 OBJECT_IMAGE_SIZE=1280
 OBJECT_CLASSES=afval,vaat
+TRASH_CLASSES=afval,bottle
+DISH_CLASSES=vaat,plate,plates,bowl,dish,dishes
+DISH_CUP_CLASSES=cup,mug,wine glass
+DISH_CUP_THRESHOLD=2
 NOTIFICATION_SUPPRESS_CLASSES=person
 NOTIFY_ENABLED=false
 DRY_RUN_NOTIFICATIONS=true

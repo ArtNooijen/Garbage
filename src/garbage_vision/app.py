@@ -230,26 +230,69 @@ def draw_findings_on_roi_crop(
 def filter_allowed_findings(
     findings: list[ObjectFinding],
     allowed_classes: set[str],
+    trash_classes: set[str],
+    dish_classes: set[str],
+    dish_cup_classes: set[str],
+    dish_cup_threshold: int,
 ) -> list[ObjectFinding]:
-    if not allowed_classes:
-        return [finding for finding in findings if finding.model == "primary"]
-    return [
+    primary_matches = [
         finding
         for finding in findings
         if finding.model == "primary" and finding.name in allowed_classes
     ]
+    if not allowed_classes:
+        primary_matches = [finding for finding in findings if finding.model == "primary"]
+
+    dish_matches = [finding for finding in findings if finding.name in dish_classes]
+    cup_matches = [finding for finding in findings if finding.name in dish_cup_classes]
+    if len(cup_matches) >= dish_cup_threshold:
+        dish_matches.extend(cup_matches)
+    trash_matches = [finding for finding in findings if finding.name in trash_classes]
+
+    display_findings = primary_matches + trash_matches + dish_matches
+    seen: set[tuple[str, str, tuple[int, int, int, int]]] = set()
+    deduped: list[ObjectFinding] = []
+    for finding in display_findings:
+        key = (finding.model, finding.name, finding.box)
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(finding)
+    return deduped
 
 
-def format_detection_counts(findings: list[ObjectFinding]) -> str:
+def format_detection_counts(
+    findings: list[ObjectFinding],
+    trash_classes: set[str],
+    dish_classes: set[str],
+    dish_cup_classes: set[str],
+) -> str:
     counts = Counter(finding.name for finding in findings)
-    return f"afval={counts.get('afval', 0)} vaat={counts.get('vaat', 0)}"
+    trash_count = counts.get("afval", 0) + sum(
+        counts[class_name] for class_name in trash_classes if class_name != "afval"
+    )
+    dish_count = counts.get("vaat", 0)
+    dish_count += sum(counts[class_name] for class_name in dish_classes if class_name != "vaat")
+    dish_count += sum(counts[class_name] for class_name in dish_cup_classes)
+    return f"afval={trash_count} vaat={dish_count}"
 
 
-def detection_counts(findings: list[ObjectFinding]) -> dict[str, int]:
+def detection_counts(
+    findings: list[ObjectFinding],
+    trash_classes: set[str],
+    dish_classes: set[str],
+    dish_cup_classes: set[str],
+) -> dict[str, int]:
     counts = Counter(finding.name for finding in findings)
+    trash_count = counts.get("afval", 0) + sum(
+        counts[class_name] for class_name in trash_classes if class_name != "afval"
+    )
+    dish_count = counts.get("vaat", 0)
+    dish_count += sum(counts[class_name] for class_name in dish_classes if class_name != "vaat")
+    dish_count += sum(counts[class_name] for class_name in dish_cup_classes)
     return {
-        "afval": counts.get("afval", 0),
-        "vaat": counts.get("vaat", 0),
+        "afval": trash_count,
+        "vaat": dish_count,
     }
 
 
@@ -308,11 +351,23 @@ def handle_frame(
 
     if result.detected:
         verification = verifier.verify(frame)
-        display_findings = filter_allowed_findings(verification.findings, config.object_classes)
+        display_findings = filter_allowed_findings(
+            verification.findings,
+            config.object_classes,
+            config.trash_classes,
+            config.dish_classes,
+            config.dish_cup_classes,
+            config.dish_cup_threshold,
+        )
         LOGGER.info(
             "YOLO result accepted=%s %s",
             verification.accepted,
-            format_detection_counts(display_findings),
+            format_detection_counts(
+                display_findings,
+                config.trash_classes,
+                config.dish_classes,
+                config.dish_cup_classes,
+            ),
         )
         if verification.accepted:
             x1, y1, _, _ = roi_bounds(frame, config.detection_roi)
@@ -330,7 +385,16 @@ def handle_frame(
             if suppress_reason:
                 LOGGER.info("Notification %s", suppress_reason)
             else:
-                notifier.send(result, crop_path, detection_counts(display_findings))
+                notifier.send(
+                    result,
+                    crop_path,
+                    detection_counts(
+                        display_findings,
+                        config.trash_classes,
+                        config.dish_classes,
+                        config.dish_cup_classes,
+                    ),
+                )
         else:
             LOGGER.info("Change suppressed because object verification rejected it")
 

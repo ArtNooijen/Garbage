@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from collections import Counter
 from dataclasses import dataclass
 
 import cv2
@@ -51,8 +52,21 @@ class YoloObjectVerifier:
         self.confidence = config.object_confidence
         self.image_size = config.object_image_size
         self.allowed_classes = config.object_classes
+        self.trash_classes = config.trash_classes
+        self.dish_classes = config.dish_classes
+        self.dish_cup_classes = config.dish_cup_classes
+        self.dish_cup_threshold = config.dish_cup_threshold
         self.roi = config.detection_roi
         self._models = {}
+
+    def _has_trash_evidence(self, findings: list[ObjectFinding]) -> bool:
+        return any(finding.name in self.trash_classes for finding in findings)
+
+    def _has_dish_evidence(self, findings: list[ObjectFinding]) -> bool:
+        counts = Counter(finding.name for finding in findings)
+        dish_count = sum(counts[class_name] for class_name in self.dish_classes)
+        cup_count = sum(counts[class_name] for class_name in self.dish_cup_classes)
+        return dish_count > 0 or cup_count >= self.dish_cup_threshold
 
     def _load_model(self, model_name: str):
         if model_name in self._models:
@@ -137,10 +151,13 @@ class YoloObjectVerifier:
             )
         findings = primary_findings + context_findings
 
+        dish_accepted = self._has_dish_evidence(findings)
+        trash_accepted = self._has_trash_evidence(findings)
         if not self.allowed_classes:
             accepted = bool(primary_findings)
         else:
             accepted = any(finding.name in self.allowed_classes for finding in primary_findings)
+        accepted = accepted or trash_accepted or dish_accepted
 
         if accepted:
             labels = ", ".join(
@@ -148,6 +165,10 @@ class YoloObjectVerifier:
             )
             if context_findings:
                 labels = f"{labels}; context={len(context_findings)} objects"
+            if trash_accepted:
+                labels = f"{labels}; trash evidence accepted"
+            if dish_accepted:
+                labels = f"{labels}; dish evidence accepted"
             LOGGER.debug("YOLO accepted: %s", labels)
             return ObjectVerification(True, findings, "YOLO accepted")
 

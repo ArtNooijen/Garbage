@@ -74,6 +74,10 @@ class AppConfig:
     object_confidence: float
     object_image_size: int
     object_classes: set[str]
+    trash_classes: set[str]
+    dish_classes: set[str]
+    dish_cup_classes: set[str]
+    dish_cup_threshold: int
     notification_suppress_classes: set[str]
     notify_enabled: bool
     dry_run_notifications: bool
@@ -113,10 +117,11 @@ def load_config() -> AppConfig:
         object_model_2=os.getenv("OBJECT_MODEL_2", "").strip(),
         object_confidence=_float("OBJECT_CONFIDENCE", 0.35),
         object_image_size=_int("OBJECT_IMAGE_SIZE", 1280),
-        object_classes=_csv(
-            "OBJECT_CLASSES",
-            "afval,vaat,bottle,cup,bowl,backpack,handbag,suitcase,book,cell phone",
-        ),
+        object_classes=_csv("OBJECT_CLASSES", "afval,vaat"),
+        trash_classes=_csv("TRASH_CLASSES", "afval,bottle"),
+        dish_classes=_csv("DISH_CLASSES", "vaat,plate,plates,bowl,dish,dishes"),
+        dish_cup_classes=_csv("DISH_CUP_CLASSES", "cup,mug,wine glass"),
+        dish_cup_threshold=_int("DISH_CUP_THRESHOLD", 2),
         notification_suppress_classes=_csv("NOTIFICATION_SUPPRESS_CLASSES", "person"),
         notify_enabled=_bool("NOTIFY_ENABLED", False),
         dry_run_notifications=_bool("DRY_RUN_NOTIFICATIONS", True),
