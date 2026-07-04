@@ -1,0 +1,31 @@
+services:
+  garbage-vision:
+    build:
+      context: .
+      args:
+        INSTALL_YOLO: "false"
+    container_name: garbage-vision
+    env_file:
+      - path: .env
+        required: false
+    volumes:
+      - ./data:/app/data
+      - ./samples:/app/samples:ro
+    restart: unless-stopped
+    command: ["prod"]
+
+  garbage-vision-test:
+    build:
+      context: .
+      args:
+        INSTALL_YOLO: "false"
+    profiles:
+      - test
+    env_file:
+      - path: .env
+        required: false
+    volumes:
+      - ./data:/app/data
+      - ./samples:/app/samples:ro
+    restart: "no"
+    command: ["test", "--source", "images"]

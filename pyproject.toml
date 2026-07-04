@@ -1,0 +1,27 @@
+[project]
+name = "garbage-vision"
+version = "0.1.0"
+description = "Camera polling and test-mode detection pipeline for garbage/bin monitoring."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "numpy==2.1.3",
+    "opencv-python-headless==4.10.0.84",
+    "python-dotenv==1.0.1",
+    "requests==2.32.3",
+]
+
+[project.optional-dependencies]
+yolo = [
+    "ultralytics>=8.3.0",
+]
+
+[project.scripts]
+garbage-vision = "garbage_vision.app:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/garbage_vision"]
