@@ -15,6 +15,15 @@ services:
     restart: unless-stopped
     command: ["prod"]
 
+  garbage-vision-images:
+    image: nginx:1.27-alpine
+    container_name: garbage-vision-images
+    volumes:
+      - ./data/detections:/usr/share/nginx/html:ro
+    ports:
+      - "127.0.0.1:8765:80"
+    restart: unless-stopped
+
   garbage-vision-test:
     build:
       context: .

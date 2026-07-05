@@ -30,3 +30,22 @@ cd /home/art/home-lab/garbage-vision
 docker compose up -d --build
 docker compose logs -f garbage-vision
 ```
+
+The `garbage-vision-images` service serves the latest detection images on
+localhost only:
+
+```text
+http://127.0.0.1:8765/latest_roi_marked.jpg
+```
+
+Expose it to Home Assistant over Tailscale Serve:
+
+```bash
+tailscale serve --bg --https=8765 http://127.0.0.1:8765
+```
+
+Tailnet URL:
+
+```text
+https://hadrian.tail818628.ts.net:8765/latest_roi_marked.jpg
+```

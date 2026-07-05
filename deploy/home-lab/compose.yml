@@ -14,3 +14,12 @@ services:
       - /home/art/garbage-vision/samples:/app/samples:ro
     restart: unless-stopped
     command: ["prod"]
+
+  garbage-vision-images:
+    image: nginx:1.27-alpine
+    container_name: garbage-vision-images
+    volumes:
+      - /home/art/garbage-vision/data/detections:/usr/share/nginx/html:ro
+    ports:
+      - "127.0.0.1:8765:80"
+    restart: unless-stopped

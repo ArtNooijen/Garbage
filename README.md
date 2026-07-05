@@ -316,6 +316,51 @@ docker compose logs -f garbage-vision
 
 Detection images are saved under `data/detections/`.
 
+## Tailscale Image Sharing
+
+The `garbage-vision-images` sidecar serves `data/detections/` with nginx, but
+only on localhost:
+
+```yaml
+ports:
+  - "127.0.0.1:8765:80"
+```
+
+That means the image endpoint is not open on the LAN. Expose it over your
+Tailnet with Tailscale Serve on `hadrian`:
+
+```bash
+cd /home/art/garbage-vision
+docker compose up -d garbage-vision-images
+tailscale serve --bg --https=8765 http://127.0.0.1:8765
+```
+
+Then the latest marked detection image is available inside your Tailnet at:
+
+```text
+https://hadrian.tail818628.ts.net:8765/latest_roi_marked.jpg
+```
+
+Useful checks:
+
+```bash
+curl -I http://127.0.0.1:8765/latest_roi_marked.jpg
+tailscale serve status
+```
+
+Home Assistant can show this image with a generic camera:
+
+```yaml
+camera:
+  - platform: generic
+    name: Garbage Vision Latest
+    still_image_url: https://hadrian.tail818628.ts.net:8765/latest_roi_marked.jpg
+    verify_ssl: true
+```
+
+Because Tailscale Serve provides the HTTPS Tailnet endpoint, do not publish
+port `8765` on `0.0.0.0` or forward it from your router.
+
 ## Deploy to the Home-Lab Linux VM
 
 The target host from `ArtNooijen/home-lab` is the Ubuntu `linux-docker-host`
